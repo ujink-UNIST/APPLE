@@ -71,6 +71,15 @@ file*.page
 results.txt
 results.csv
 
+# Secrets / local security material
+.env
+.env.*
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
 # OS files
 .DS_Store
 Thumbs.db

@@ -7,13 +7,14 @@ import uuid
 from pathlib import Path
 from typing import AsyncIterator
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
 
 from api.job_queue import RUNS_DIR, create_job, get_job, init_db, job_to_payload
 from api.schemas import AppleJobStatusResponse, AppleRunAcceptedResponse
+from api.security import require_api_key
 
-router = APIRouter(prefix="/apple", tags=["apple"])
+router = APIRouter(prefix="/apple", tags=["apple"], dependencies=[Depends(require_api_key)])
 
 
 @router.post(

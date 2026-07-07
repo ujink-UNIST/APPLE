@@ -2,7 +2,10 @@ param(
     [string]$EnvName = "apple",
     [string]$HostName = "127.0.0.1",
     [int]$Port = 49913,
-    [switch]$Reload
+    [switch]$Reload,
+    [string]$ApiKey = $env:APPLE_API_KEY,
+    [string]$CertFile = "",
+    [string]$KeyFile = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -47,6 +50,13 @@ if (-not $exists) {
     & $conda env update -n $EnvName -f environment.yml --prune
 }
 
+if ($ApiKey) {
+    $env:APPLE_API_KEY = $ApiKey
+    Write-Host "API key protection: enabled (X-API-Key required)"
+} else {
+    Write-Host "API key protection: disabled (set -ApiKey or APPLE_API_KEY to enable)"
+}
+
 $uvicornArgs = @(
     "-m", "uvicorn", "app:app",
     "--host", $HostName,
@@ -54,14 +64,18 @@ $uvicornArgs = @(
     "--log-level", "info",
     "--access-log"
 )
+if ($CertFile -and $KeyFile) {
+    $uvicornArgs += @("--ssl-certfile", $CertFile, "--ssl-keyfile", $KeyFile)
+}
 if ($Reload) {
     $uvicornArgs += "--reload"
 }
 
 Write-Host ""
-Write-Host "Starting APPLE API on http://$HostName`:$Port"
-Write-Host "Swagger UI: http://$HostName`:$Port/docs"
-Write-Host "OpenAPI:    http://$HostName`:$Port/openapi.json"
+$scheme = if ($CertFile -and $KeyFile) { "https" } else { "http" }
+Write-Host "Starting APPLE API on $scheme://$HostName`:$Port"
+Write-Host "Swagger UI: $scheme://$HostName`:$Port/docs"
+Write-Host "OpenAPI:    $scheme://$HostName`:$Port/openapi.json"
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
