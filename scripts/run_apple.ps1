@@ -73,9 +73,9 @@ if ($Reload) {
 
 Write-Host ""
 $scheme = if ($CertFile -and $KeyFile) { "https" } else { "http" }
-Write-Host "Starting APPLE API on $scheme://$HostName`:$Port"
-Write-Host "Swagger UI: $scheme://$HostName`:$Port/docs"
-Write-Host "OpenAPI:    $scheme://$HostName`:$Port/openapi.json"
+Write-Host "Starting APPLE API on ${scheme}://${HostName}:$Port"
+Write-Host "Swagger UI: ${scheme}://${HostName}:$Port/docs"
+Write-Host "OpenAPI:    ${scheme}://${HostName}:$Port/openapi.json"
 Write-Host "Press Ctrl+C to stop."
 Write-Host ""
 
