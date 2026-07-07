@@ -1,0 +1,75 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyd
+*.pyo
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.conda/
+
+# Conda
+conda-meta/
+
+# Test/cache
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.ipynb_checkpoints/
+
+# IDE/editor
+.vscode/*
+!.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# APPLE runtime data
+/data/
+/runs/
+
+# MAPDL/ANSYS generated files
+*.lock
+*.err
+*.log
+*.out
+*.page
+*.rst
+*.rth
+*.emat
+*.esav
+*.full
+*.mntr
+*.stat
+*.db
+*.dbb
+*.mode
+*.sub
+*.bat
+cleanup-ansys-*.bat
+.__tmp__.inp
+.__tmp__.out
+file*.bat
+file*.err
+file*.log
+file*.out
+file*.page
+
+# Uploaded/generated inputs and outputs
+/test_inputs/
+results.txt
+results.csv
+
+# OS files
+.DS_Store
+Thumbs.db
