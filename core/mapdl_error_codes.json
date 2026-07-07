@@ -11,7 +11,7 @@
   },
   "MAPDL_LICENSE_CHECKOUT_FAILED": {
     "kind": "LICENSE",
-    "regex": "license|flexlm|checkout failed|license manager|licensed number of users",
+    "regex": "ansys license manager error|license checkout fail|cannot check\\s*out license|cannot connect to license|license server down|licensed number of users already reached|flexnet licensing error|flexlm.*(?:error|unavailable)",
     "description": "라이선스 체크아웃 또는 라이선스 서버 오류"
   },
   "MAPDL_MEMORY_ALLOCATION_FAILED": {

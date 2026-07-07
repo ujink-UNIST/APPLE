@@ -56,7 +56,7 @@ class ErrorClassifier:
         },
         "MAPDL_LICENSE_CHECKOUT_FAILED": {
             "kind": "LICENSE",
-            "regex": r"license|flexlm|checkout failed|license manager|licensed number of users",
+            "regex": r"ansys license manager error|license checkout fail|cannot check\s*out license|cannot connect to license|license server down|licensed number of users already reached|flexnet licensing error|flexlm.*(?:error|unavailable)",
         },
         "MAPDL_MEMORY_ALLOCATION_FAILED": {
             "kind": "MEMORY",
