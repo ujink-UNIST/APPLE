@@ -5,6 +5,7 @@ import logging
 import sqlite3
 import threading
 import time
+import contextlib
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -184,6 +185,49 @@ def finish_job(
         )
 
 
+def tail_mapdl_outputs(job_id: str, run_dir: Path, stop_event: threading.Event, poll_interval: float = 0.5) -> None:
+    """MAPDL .out/.err 파일을 tail 해서 터미널 로그로 출력한다."""
+    positions: dict[Path, int] = {}
+    patterns = ("*.out", "*.err", "*.log")
+
+    while not stop_event.is_set():
+        for pattern in patterns:
+            for path in sorted(run_dir.glob(pattern)):
+                if not path.is_file():
+                    continue
+
+                previous_pos = positions.get(path, 0)
+                try:
+                    with path.open("r", encoding="utf-8", errors="replace") as fp:
+                        fp.seek(previous_pos)
+                        chunk = fp.read()
+                        positions[path] = fp.tell()
+                except OSError:
+                    continue
+
+                if not chunk:
+                    continue
+
+                for line in chunk.splitlines():
+                    log.info("MAPDL[%s][%s] %s", job_id, path.name, line)
+
+        stop_event.wait(poll_interval)
+
+    # 종료 직후 남은 로그를 한 번 더 비운다.
+    for pattern in patterns:
+        for path in sorted(run_dir.glob(pattern)):
+            if not path.is_file():
+                continue
+            previous_pos = positions.get(path, 0)
+            with contextlib.suppress(OSError):
+                with path.open("r", encoding="utf-8", errors="replace") as fp:
+                    fp.seek(previous_pos)
+                    chunk = fp.read()
+                    positions[path] = fp.tell()
+                for line in chunk.splitlines():
+                    log.info("MAPDL[%s][%s] %s", job_id, path.name, line)
+
+
 def job_to_payload(job: JobRecord, include_results: bool = False) -> dict[str, Any]:
     results_csv = None
     if include_results and job.results_path:
@@ -244,7 +288,19 @@ class SQLiteJobWorker:
             timeout=record.timeout,
             extra_args={"override": True},
         )
-        result = APDLRunner(retry_policy=RetryPolicy(max_attempts=1)).run(job)
+        tail_stop_event = threading.Event()
+        tail_thread = threading.Thread(
+            target=tail_mapdl_outputs,
+            args=(record.job_id, Path(record.run_dir), tail_stop_event),
+            name=f"apple-mapdl-tail-{record.job_id}",
+            daemon=True,
+        )
+        tail_thread.start()
+        try:
+            result = APDLRunner(retry_policy=RetryPolicy(max_attempts=1)).run(job)
+        finally:
+            tail_stop_event.set()
+            tail_thread.join(timeout=5)
 
         if isinstance(result, Ok):
             results_path = Path(record.run_dir) / "results.txt"

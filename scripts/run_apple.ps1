@@ -47,10 +47,23 @@ if (-not $exists) {
     & $conda env update -n $EnvName -f environment.yml --prune
 }
 
-$uvicornArgs = @("-m", "uvicorn", "app:app", "--host", $HostName, "--port", "$Port")
+$uvicornArgs = @(
+    "-m", "uvicorn", "app:app",
+    "--host", $HostName,
+    "--port", "$Port",
+    "--log-level", "info",
+    "--access-log"
+)
 if ($Reload) {
     $uvicornArgs += "--reload"
 }
 
+Write-Host ""
 Write-Host "Starting APPLE API on http://$HostName`:$Port"
-& $conda run -n $EnvName python @uvicornArgs
+Write-Host "Swagger UI: http://$HostName`:$Port/docs"
+Write-Host "OpenAPI:    http://$HostName`:$Port/openapi.json"
+Write-Host "Press Ctrl+C to stop."
+Write-Host ""
+
+# --no-capture-output가 없으면 conda run이 uvicorn 로그를 숨기거나 늦게 출력할 수 있습니다.
+& $conda run -n $EnvName --no-capture-output python @uvicornArgs

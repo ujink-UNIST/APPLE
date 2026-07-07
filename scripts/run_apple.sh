@@ -45,5 +45,10 @@ else
   "$CONDA" env create -f environment.yml
 fi
 
+echo
 echo "Starting APPLE API on http://$HOST:$PORT"
-"$CONDA" run -n "$ENV_NAME" python -m uvicorn app:app --host "$HOST" --port "$PORT" $RELOAD
+echo "Swagger UI: http://$HOST:$PORT/docs"
+echo "OpenAPI:    http://$HOST:$PORT/openapi.json"
+echo "Press Ctrl+C to stop."
+echo
+"$CONDA" run -n "$ENV_NAME" --no-capture-output python -m uvicorn app:app --host "$HOST" --port "$PORT" --log-level info --access-log $RELOAD
