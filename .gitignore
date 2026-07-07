@@ -26,6 +26,7 @@ conda-meta/
 .coverage
 htmlcov/
 .ipynb_checkpoints/
+/notebooks/
 
 # IDE/editor
 .vscode/*

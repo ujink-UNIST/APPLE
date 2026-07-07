@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from core import APDLJob, APDLRunner, Err, ErrorKind, Ok, RetryPolicy
+from core import APDLJob, APDLRunner, Err, ErrorClassifier, ErrorKind, Ok, RetryPolicy
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +102,17 @@ def _row_to_job(row: sqlite3.Row) -> JobRecord:
 
 def error_code_for_kind(error_kind: str | None) -> str:
     return ERROR_CODE_BY_KIND.get(error_kind or ErrorKind.UNKNOWN.name, "E901")
+
+
+def classify_run_outputs(run_dir: Path) -> tuple[str | None, str | None]:
+    """results.txt가 없을 때 MAPDL 로그에서 실제 실패 원인을 재분류한다."""
+    log_files = [*run_dir.glob("*.err"), *run_dir.glob("file*.out")]
+    for path in log_files:
+        text = path.read_text(encoding="utf-8", errors="replace")
+        kind, _code = ErrorClassifier.classify_detail(text)
+        if kind != ErrorKind.UNKNOWN:
+            return kind.name, f"{path.name}: {text[-2000:]}"
+    return None, None
 
 
 def create_job(job_id: str, macro_hash: str, script_path: Path, run_dir: Path, timeout: int) -> None:
@@ -238,12 +249,14 @@ class SQLiteJobWorker:
         if isinstance(result, Ok):
             results_path = Path(record.run_dir) / "results.txt"
             if not results_path.exists():
+                detected_kind, detected_message = classify_run_outputs(Path(record.run_dir))
+                error_kind = detected_kind or "IO"
                 finish_job(
                     record.job_id,
                     status="FAILED",
-                    error_code="E501",
-                    error_kind="IO",
-                    error_message="MAPDL 실행은 완료됐지만 results.txt가 생성되지 않았습니다.",
+                    error_code=error_code_for_kind(error_kind),
+                    error_kind=error_kind,
+                    error_message=detected_message or "MAPDL 실행은 완료됐지만 results.txt가 생성되지 않았습니다.",
                 )
                 log.warning("APPLE job completed without results.txt: %s", record.job_id)
                 return
