@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.serialization import (
     NoEncryption,
     PrivateFormat,
     PublicFormat,
+    load_pem_private_key,
 )
 
 
@@ -20,18 +21,20 @@ def main() -> None:
     args = parser.parse_args()
     path = args.private_key_path
     if path.exists():
-        raise FileExistsError(f"Refusing to overwrite private key: {path}")
-    path.parent.mkdir(parents=True, exist_ok=True)
-
-    private_key = Ed25519PrivateKey.generate()
-    path.write_bytes(
-        private_key.private_bytes(
-            Encoding.PEM,
-            PrivateFormat.PKCS8,
-            NoEncryption(),
+        private_key = load_pem_private_key(path.read_bytes(), password=None)
+        if not isinstance(private_key, Ed25519PrivateKey):
+            raise ValueError(f"Existing private key is not Ed25519: {path}")
+    else:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        private_key = Ed25519PrivateKey.generate()
+        path.write_bytes(
+            private_key.private_bytes(
+                Encoding.PEM,
+                PrivateFormat.PKCS8,
+                NoEncryption(),
+            )
         )
-    )
-    os.chmod(path, 0o600)
+        os.chmod(path, 0o600)
     public_bytes = private_key.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     public_key = base64.urlsafe_b64encode(public_bytes).rstrip(b"=").decode("ascii")
     print(public_key)

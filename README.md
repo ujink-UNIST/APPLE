@@ -16,22 +16,25 @@ $env:ANSYS_NP = "2"
 
 기본값이 위와 같으므로 같은 위치에 ANSYS가 설치되어 있으면 환경 변수는 생략할 수 있습니다.
 
-## Outbound agent 실행
+## Outbound agent 설정과 실행
 
-먼저 worker host에서 Ed25519 keypair를 생성한다. 출력된 public key만 LatSim server에
-등록하고 private key는 이 host에 보관한다.
+관리자 PowerShell에서 setup script를 한 번 실행한다. 이 script는 hosts entry와 Caddy root
+인증서를 설치하고, conda 환경을 갱신하고, Ed25519 key와 ignored settings file을 생성하고,
+LatSim HTTPS 연결을 확인한다.
 
 ```powershell
-python .\scripts\generate_worker_key.py .\secrets\worker-key.pem
+.\scripts\set_agent.ps1 `
+  -RootCertPath "C:\path\to\caddy-root.crt" `
+  -BackendIp "10.74.19.162" `
+  -ApiUrl "https://latsim-backend" `
+  -WorkerId "ansys-workstation-01"
 ```
 
+출력된 public mapping만 LatSim Backend의 `LATSIM_WORKER_PUBLIC_KEYS`에 병합한다. Private key는
+APPLE host의 `secrets/worker-key.pem`에만 남는다. Backend 재시작 후에는 별도 환경변수 없이
+실행한다.
+
 ```powershell
-$env:LATSIM_API_URL = "https://latsim.example.com"
-$env:LATSIM_WORKER_ID = "ansys-workstation-01"
-$env:LATSIM_WORKER_KEY_ID = "key-1"
-$env:LATSIM_WORKER_PRIVATE_KEY_PATH = "$PWD\secrets\worker-key.pem"
-$env:ANSYS_EXE = "C:\Program Files\ANSYS Inc\v232\ansys\bin\winx64\ANSYS232.exe"
-$env:ANSYS_NP = "2"
 .\scripts\run_agent.ps1
 ```
 
