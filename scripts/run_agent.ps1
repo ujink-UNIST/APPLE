@@ -34,10 +34,29 @@ if (-not (Test-Path $env:LATSIM_WORKER_PRIVATE_KEY_PATH -PathType Leaf)) {
     throw "APPLE worker private key was not found. Run scripts\set_agent.ps1 first."
 }
 
+function Find-Conda {
+    $command = Get-Command conda -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+
+    $candidates = @(
+        "$env:USERPROFILE\miniconda3\Scripts\conda.exe",
+        "$env:USERPROFILE\anaconda3\Scripts\conda.exe",
+        "$env:LOCALAPPDATA\miniconda3\Scripts\conda.exe",
+        "$env:LOCALAPPDATA\anaconda3\Scripts\conda.exe",
+        "C:\ProgramData\miniconda3\Scripts\conda.exe",
+        "C:\ProgramData\anaconda3\Scripts\conda.exe"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate -PathType Leaf) { return $candidate }
+    }
+    throw "conda was not found. Install Miniconda or add conda to PATH."
+}
+
+$Conda = Find-Conda
 Set-Location $ProjectRoot
 Write-Host "Starting APPLE outbound agent..."
 Write-Host "LatSim API: $env:LATSIM_API_URL"
 Write-Host "Worker ID: $env:LATSIM_WORKER_ID"
 Write-Host "Concurrency: 1"
 
-conda run -n $EnvName --no-capture-output python agent.py
+& $Conda run -n $EnvName --no-capture-output python agent.py

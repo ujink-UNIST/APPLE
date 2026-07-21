@@ -45,11 +45,25 @@ if ($KeyId -notmatch '^[A-Za-z0-9_.-]{1,64}$') {
     throw "KeyId contains unsupported characters."
 }
 
-$condaCommand = Get-Command conda -ErrorAction SilentlyContinue
-if (-not $condaCommand) {
-    throw "conda was not found in PATH."
+function Find-Conda {
+    $command = Get-Command conda -ErrorAction SilentlyContinue
+    if ($command) { return $command.Source }
+
+    $candidates = @(
+        "$env:USERPROFILE\miniconda3\Scripts\conda.exe",
+        "$env:USERPROFILE\anaconda3\Scripts\conda.exe",
+        "$env:LOCALAPPDATA\miniconda3\Scripts\conda.exe",
+        "$env:LOCALAPPDATA\anaconda3\Scripts\conda.exe",
+        "C:\ProgramData\miniconda3\Scripts\conda.exe",
+        "C:\ProgramData\anaconda3\Scripts\conda.exe"
+    )
+    foreach ($candidate in $candidates) {
+        if (Test-Path $candidate -PathType Leaf) { return $candidate }
+    }
+    throw "conda was not found. Install Miniconda or add conda to PATH."
 }
-$Conda = $condaCommand.Source
+
+$Conda = Find-Conda
 
 Set-Location $ProjectRoot
 New-Item -ItemType Directory -Force $SecretsDir | Out-Null
