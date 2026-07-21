@@ -27,6 +27,7 @@ conda-meta/
 htmlcov/
 .ipynb_checkpoints/
 /notebooks/
+/tests/
 
 # IDE/editor
 .vscode/*
@@ -72,6 +73,7 @@ results.txt
 results.csv
 
 # Secrets / local security material
+/secrets/
 .env
 .env.*
 *.pem
@@ -83,3 +85,5 @@ results.csv
 # OS files
 .DS_Store
 Thumbs.db
+
+AGENTS.md

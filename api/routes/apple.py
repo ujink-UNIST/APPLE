@@ -3,9 +3,11 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import stat
 import uuid
-from pathlib import Path
-from typing import AsyncIterator
+import zipfile
+from pathlib import Path, PurePosixPath
+from typing import AsyncIterator, BinaryIO
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect, status
 from fastapi.responses import StreamingResponse
@@ -15,65 +17,94 @@ from api.schemas import AppleJobStatusResponse, AppleRunAcceptedResponse
 from api.security import require_api_key
 
 router = APIRouter(prefix="/apple", tags=["apple"], dependencies=[Depends(require_api_key)])
+MAX_ARCHIVE_BYTES = 512 * 1024 * 1024
+MAX_EXTRACTED_BYTES = 2 * 1024 * 1024 * 1024
+MAX_ARCHIVE_ENTRIES = 1000
+
+
+def _extract_zip(source: BinaryIO, destination: Path) -> None:
+    """제한 안에서 ZIP을 풀고 경로 탈출과 심볼릭 링크를 거부한다."""
+    with zipfile.ZipFile(source) as archive:
+        entries = archive.infolist()
+        if len(entries) > MAX_ARCHIVE_ENTRIES:
+            raise ValueError(f"압축 파일 항목은 최대 {MAX_ARCHIVE_ENTRIES}개까지 허용됩니다.")
+        if sum(entry.file_size for entry in entries) > MAX_EXTRACTED_BYTES:
+            raise ValueError("압축 해제된 파일의 전체 크기가 2 GiB 제한을 초과합니다.")
+
+        seen: set[str] = set()
+        validated: list[tuple[zipfile.ZipInfo, Path]] = []
+        root = destination.resolve()
+        for entry in entries:
+            name = entry.filename.replace("\\", "/")
+            relative = PurePosixPath(name)
+            if not relative.parts or relative.is_absolute() or ".." in relative.parts or any(":" in part for part in relative.parts):
+                raise ValueError(f"허용되지 않는 압축 경로입니다: {entry.filename}")
+            if entry.flag_bits & 0x1:
+                raise ValueError("암호화된 ZIP 파일은 지원하지 않습니다.")
+            if stat.S_ISLNK(entry.external_attr >> 16):
+                raise ValueError(f"심볼릭 링크는 허용되지 않습니다: {entry.filename}")
+
+            target = destination.joinpath(*relative.parts)
+            if not target.resolve().is_relative_to(root):
+                raise ValueError(f"작업 폴더를 벗어나는 압축 경로입니다: {entry.filename}")
+            key = str(relative).casefold()
+            if key in seen:
+                raise ValueError(f"중복된 압축 경로입니다: {entry.filename}")
+            seen.add(key)
+            validated.append((entry, target))
+
+        for entry, target in validated:
+            if entry.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with archive.open(entry) as source_file, target.open("wb") as target_file:
+                shutil.copyfileobj(source_file, target_file)
 
 
 @router.post(
     "/run/",
     response_model=AppleRunAcceptedResponse,
     status_code=status.HTTP_202_ACCEPTED,
-    summary="APDL 작업 실행 요청",
-    description="APDL [hash].inp 파일과 선택적 .cdb mesh 파일을 저장하고 SQLite queue에 작업을 등록합니다. 실제 실행은 worker가 비동기로 처리합니다.",
+    summary="ANSYS 작업 실행 요청",
+    description="setup.apdl과 입력 파일이 들어 있는 ZIP 하나를 저장하고 SQLite queue에 작업을 등록합니다.",
 )
 def run_apple_job(
-    macro: UploadFile = File(..., description="실행할 APDL [hash].inp 매크로 파일"),
-    mesh: UploadFile = File(None, description="실행에 사용할 선택적 MAPDL mesh .cdb 파일"),
+    archive: UploadFile = File(..., description="루트에 setup.apdl이 포함된 ZIP 파일"),
     timeout: int = Form(3600, gt=0, description="실행 제한 시간(초)"),
 ) -> AppleRunAcceptedResponse:
     init_db()
 
-    uploaded_name = Path(macro.filename or "")
-    if uploaded_name.suffix.lower() != ".inp":
-        raise HTTPException(status_code=400, detail="macro 파일은 .inp 확장자여야 합니다.")
-
-    mesh_name = Path(mesh.filename or "") if mesh is not None else None
-    if mesh_name is not None and mesh_name.suffix.lower() != ".cdb":
-        raise HTTPException(status_code=400, detail="mesh 파일은 .cdb 확장자여야 합니다.")
-
-    macro_hash = uploaded_name.stem
-    if not macro_hash:
-        raise HTTPException(status_code=400, detail="파일명은 [hash].inp 형식이어야 합니다.")
+    if Path(archive.filename or "").suffix.lower() != ".zip":
+        raise HTTPException(status_code=400, detail="입력 파일은 .zip 확장자여야 합니다.")
+    archive.file.seek(0, 2)
+    archive_size = archive.file.tell()
+    archive.file.seek(0)
+    if archive_size > MAX_ARCHIVE_BYTES:
+        raise HTTPException(status_code=413, detail="압축 파일은 최대 512 MiB까지 허용됩니다.")
 
     job_id = str(uuid.uuid4())
     run_dir = RUNS_DIR / job_id
     run_dir.mkdir(parents=True, exist_ok=False)
-    script_path = run_dir / f"{macro_hash}.inp"
+    try:
+        _extract_zip(archive.file, run_dir)
+        if not (run_dir / "setup.apdl").is_file():
+            raise HTTPException(status_code=400, detail="압축 파일 루트에 setup.apdl이 없습니다.")
+        create_job(job_id=job_id, run_dir=run_dir, timeout=timeout)
+    except HTTPException:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise
+    except (zipfile.BadZipFile, OSError, RuntimeError, ValueError) as exc:
+        shutil.rmtree(run_dir, ignore_errors=True)
+        raise HTTPException(status_code=400, detail=f"ZIP 파일을 처리할 수 없습니다: {exc}") from exc
 
-    with script_path.open("wb") as fp:
-        shutil.copyfileobj(macro.file, fp)
-    if mesh is not None and mesh_name is not None:
-        mesh_path = run_dir / mesh_name.name
-        with mesh_path.open("wb") as fp:
-            shutil.copyfileobj(mesh.file, fp)
-
-    create_job(
-        job_id=job_id,
-        macro_hash=macro_hash,
-        script_path=script_path,
-        run_dir=run_dir,
-        timeout=timeout,
-    )
-
-    return AppleRunAcceptedResponse(
-        job_id=job_id,
-        status="QUEUED",
-        hash=macro_hash,
-    )
+    return AppleRunAcceptedResponse(job_id=job_id, status="QUEUED")
 
 
 @router.get(
     "/jobs/{job_id}",
     response_model=AppleJobStatusResponse,
-    summary="APDL 작업 상태 조회",
+    summary="ANSYS 작업 상태 조회",
 )
 def get_apple_job(job_id: str) -> AppleJobStatusResponse:
     job = get_job(job_id)
@@ -85,7 +116,7 @@ def get_apple_job(job_id: str) -> AppleJobStatusResponse:
 @router.get(
     "/jobs/{job_id}/result",
     response_model=AppleJobStatusResponse,
-    summary="APDL 작업 결과 조회",
+    summary="ANSYS 작업 결과 조회",
 )
 def get_apple_job_result(job_id: str) -> AppleJobStatusResponse:
     job = get_job(job_id)
@@ -100,7 +131,7 @@ def _sse(event: str, data: dict) -> str:
 
 @router.get(
     "/jobs/{job_id}/events",
-    summary="APDL 작업 완료/오류 SSE 구독",
+    summary="ANSYS 작업 완료/오류 SSE 구독",
     response_class=StreamingResponse,
 )
 async def stream_apple_job_events(request: Request, job_id: str) -> StreamingResponse:
@@ -117,9 +148,7 @@ async def stream_apple_job_events(request: Request, job_id: str) -> StreamingRes
                 yield _sse("error", {"message": "job을 찾을 수 없습니다.", "job_id": job_id})
                 return
 
-            include_results = job.is_terminal
-            payload = job_to_payload(job, include_results=include_results)
-
+            payload = job_to_payload(job, include_results=job.is_terminal)
             if job.status != last_status:
                 yield _sse("status", payload)
                 last_status = job.status
@@ -153,13 +182,10 @@ async def watch_apple_job(websocket: WebSocket, job_id: str) -> None:
                 await websocket.close(code=1008)
                 return
 
-            include_results = job.is_terminal
-            await websocket.send_json(job_to_payload(job, include_results=include_results))
-
+            await websocket.send_json(job_to_payload(job, include_results=job.is_terminal))
             if job.is_terminal:
                 await websocket.close(code=1000)
                 return
-
             await asyncio.sleep(2)
     except WebSocketDisconnect:
         return

@@ -25,7 +25,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="APPLE API",
         version="0.1.0",
-        description="APPLE APDL runner API. SQLite queue 기반 비동기 실행을 사용합니다.",
+        description="APPLE ANSYS ZIP runner API. SQLite queue 기반 비동기 실행을 사용합니다.",
         openapi_url="/openapi.json",
         docs_url="/docs",
         redoc_url="/redoc",

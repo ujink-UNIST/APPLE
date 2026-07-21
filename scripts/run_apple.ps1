@@ -5,10 +5,17 @@ param(
     [switch]$Reload,
     [string]$ApiKey = $env:APPLE_API_KEY,
     [string]$CertFile = "",
-    [string]$KeyFile = ""
+    [string]$KeyFile = "",
+    [string]$AnsysExe = $env:ANSYS_EXE,
+    [int]$AnsysNp = 0
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $AnsysExe) { $AnsysExe = "C:\Program Files\ANSYS Inc\v232\ansys\bin\winx64\ANSYS232.exe" }
+if ($AnsysNp -le 0) { $AnsysNp = if ($env:ANSYS_NP) { [int]$env:ANSYS_NP } else { 2 } }
+$env:ANSYS_EXE = $AnsysExe
+$env:ANSYS_NP = "$AnsysNp"
 
 function Find-Conda {
     $cmd = Get-Command conda -ErrorAction SilentlyContinue
@@ -32,6 +39,7 @@ function Find-Conda {
 
 $conda = Find-Conda
 Write-Host "Using conda: $conda"
+Write-Host "Using ANSYS: $AnsysExe (-np $AnsysNp)"
 
 $envList = & $conda env list --json | ConvertFrom-Json
 $exists = $false

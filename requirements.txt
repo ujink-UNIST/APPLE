@@ -2,4 +2,5 @@ fastapi>=0.115.0
 uvicorn[standard]>=0.30.0
 pydantic>=2.0.0
 python-multipart>=0.0.20
-ansys-mapdl-core>=0.69.0
+cryptography>=42.0
+pytest>=8.0.0

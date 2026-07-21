@@ -5,6 +5,8 @@ ENV_NAME="${ENV_NAME:-apple}"
 HOST="${HOST:-127.0.0.1}"
 PORT="${PORT:-49913}"
 API_KEY="${APPLE_API_KEY:-}"
+ANSYS_EXE="${ANSYS_EXE:-C:\\Program Files\\ANSYS Inc\\v232\\ansys\\bin\\winx64\\ANSYS232.exe}"
+ANSYS_NP="${ANSYS_NP:-2}"
 CERT_FILE=""
 KEY_FILE=""
 RELOAD=""
@@ -17,6 +19,8 @@ while [[ $# -gt 0 ]]; do
     --api-key) API_KEY="$2"; shift 2 ;;
     --certfile) CERT_FILE="$2"; shift 2 ;;
     --keyfile) KEY_FILE="$2"; shift 2 ;;
+    --ansys-exe) ANSYS_EXE="$2"; shift 2 ;;
+    --ansys-np) ANSYS_NP="$2"; shift 2 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -41,7 +45,13 @@ if [[ -z "${CONDA:-}" ]]; then
   exit 1
 fi
 
+if ! [[ "$ANSYS_NP" =~ ^[1-9][0-9]*$ ]]; then
+  echo "ANSYS_NP는 양의 정수여야 합니다." >&2
+  exit 1
+fi
+export ANSYS_EXE ANSYS_NP
 echo "Using conda: $CONDA"
+echo "Using ANSYS: $ANSYS_EXE (-np $ANSYS_NP)"
 
 if "$CONDA" env list | awk '{print $1}' | grep -qx "$ENV_NAME"; then
   echo "Conda env '$ENV_NAME' already exists. Updating dependencies..."
